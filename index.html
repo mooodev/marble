@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marble Slide Roller</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #101722;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #hud {
+      position: fixed;
+      z-index: 10;
+      top: 16px;
+      left: 16px;
+      width: min(340px, calc(100vw - 32px));
+      box-sizing: border-box;
+      padding: 14px 16px;
+      color: rgba(250, 253, 255, 0.94);
+      background: rgba(10, 16, 24, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+      user-select: none;
+    }
+
+    #hud h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    #hud p {
+      margin: 5px 0;
+      color: rgba(229, 239, 248, 0.8);
+      font-size: 13px;
+      line-height: 1.38;
+    }
+
+    #hud kbd {
+      display: inline-block;
+      min-width: 14px;
+      margin-right: 3px;
+      padding: 1px 5px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.11);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 5px;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: center;
+    }
+
+    #meters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin: 12px 0;
+    }
+
+    .meter {
+      min-width: 0;
+      padding: 9px 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 7px;
+    }
+
+    .meter strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #fff;
+      font-size: 18px;
+      line-height: 1.05;
+    }
+
+    .meter span {
+      color: rgba(224, 236, 247, 0.72);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    #speed {
+      height: 6px;
+      margin-top: 9px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+    }
+
+    #speed > div {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #8ed0ff, #eaf66d);
+      border-radius: inherit;
+    }
+
+    #actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button {
+      min-height: 36px;
+      padding: 8px 10px;
+      color: #f9fbff;
+      background: rgba(31, 44, 58, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 7px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: rgba(48, 66, 82, 0.94);
+      border-color: rgba(163, 222, 255, 0.55);
+    }
+
+    @media (max-width: 640px) {
+      #hud {
+        top: 10px;
+        left: 10px;
+        width: calc(100vw - 20px);
+        padding: 12px;
+      }
+
+      #hud h1 {
+        font-size: 16px;
+      }
+
+      #hud p {
+        font-size: 12px;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js",
+        "@dimforge/rapier3d-compat": "./vendor/rapier3d-compat.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">
+    <h1>Marble Slide Roller</h1>
+    <p><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> roll relative to camera. <kbd>Mouse</kbd> orbit. <kbd>R</kbd> reset.</p>
+    <p>Stay in the generated slide and cross the finish ring.</p>
+    <div id="meters">
+      <div class="meter"><strong id="progress">0%</strong><span>progress</span></div>
+      <div class="meter"><strong id="timer">0.0</strong><span>seconds</span></div>
+    </div>
+    <div id="speed"><div></div></div>
+    <div id="actions">
+      <button id="resetBall" type="button">Reset Ball</button>
+      <button id="newRun" type="button">New Slide</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import RAPIER from "@dimforge/rapier3d-compat";
+
+    await RAPIER.init();
+
+    const WORLD_UP = new THREE.Vector3(0, 1, 0);
+    const FALLBACK_UP = new THREE.Vector3(1, 0, 0);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xb9d8ee);
+    scene.fog = new THREE.Fog(0xb9d8ee, 70, 230);
+
+    const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.1, 900);
+    camera.position.set(9, 8, -13);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.065;
+    controls.minDistance = 4;
+    controls.maxDistance = 34;
+    controls.maxPolarAngle = Math.PI * 0.58;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x516272, 2.15));
+
+    const sun = new THREE.DirectionalLight(0xffffff, 3.0);
+    sun.position.set(-22, 34, 14);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 180;
+    sun.shadow.camera.left = -85;
+    sun.shadow.camera.right = 85;
+    sun.shadow.camera.top = 85;
+    sun.shadow.camera.bottom = -85;
+    scene.add(sun);
+
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    world.timestep = 1 / 60;
+
+    const slideProfile = [
+      [-2.55, 1.16],
+      [-2.18, 0.62],
+      [-1.52, 0.13],
+      [-0.78, -0.18],
+      [0.00, -0.31],
+      [0.78, -0.18],
+      [1.52, 0.13],
+      [2.18, 0.62],
+      [2.55, 1.16]
+    ].map(([x, y]) => new THREE.Vector2(x, y));
+
+    const tileDefs = {
+      straight: {
+        color: 0x16a8e0,
+        build: () => makeStraight({ length: 10, drop: 0.5, segments: 28 })
+      },
+      drop: {
+        color: 0x2d65ce,
+        build: () => makeStraight({ length: 11, drop: 4.2, segments: 34 })
+      },
+      dip: {
+        color: 0x3fb6d5,
+        build: () => makeDip({ length: 12, depth: 1.2, drop: 1.3, segments: 42 })
+      },
+      left45: {
+        color: 0x18ad95,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 4, radius: 9, drop: 0.6, bank: THREE.MathUtils.degToRad(8), segments: 34 })
+      },
+      right45: {
+        color: 0x18ad95,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 4, radius: 9, drop: 0.6, bank: THREE.MathUtils.degToRad(8), segments: 34 })
+      },
+      left90: {
+        color: 0x28b85e,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 2, radius: 10, drop: 1.2, bank: THREE.MathUtils.degToRad(13), segments: 54 })
+      },
+      right90: {
+        color: 0x28b85e,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 2, radius: 10, drop: 1.2, bank: THREE.MathUtils.degToRad(13), segments: 54 })
+      },
+      bankLeft: {
+        color: 0xe59a25,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 2, radius: 11, drop: 2.3, bank: THREE.MathUtils.degToRad(25), segments: 58 })
+      },
+      bankRight: {
+        color: 0xe59a25,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 2, radius: 11, drop: 2.3, bank: THREE.MathUtils.degToRad(25), segments: 58 })
+      },
+      corkscrew: {
+        color: 0x8c65c8,
+        build: () => makeTwisty({ length: 15, sway: 3.0, drop: 2.4, bank: THREE.MathUtils.degToRad(18), segments: 58 })
+      }
+    };
+
+    const slideGroup = new THREE.Group();
+    scene.add(slideGroup);
+
+    const physicsObjects = [];
+    const trackPieces = [];
+    const trackSamples = [];
+    const tempMatrix = new THREE.Matrix4();
+    const tempVec = new THREE.Vector3();
+    const tempQuat = new THREE.Quaternion();
+    const tempScale = new THREE.Vector3();
+
+    let activeSocket = new THREE.Matrix4().identity();
+    let totalTrackLength = 0;
+    let fallResetY = -60;
+    let runStartedAt = performance.now();
+    let finished = false;
+    let finishRing;
+    let startInfo;
+
+    const slideTexture = makeSlideTexture();
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x12364a, transparent: true, opacity: 0.28 });
+    const supportMaterial = new THREE.MeshStandardMaterial({ color: 0x384e5a, roughness: 0.68, metalness: 0.1 });
+
+    const ballRadius = 0.62;
+    const ballBody = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(0, 3, 0)
+        .setLinearDamping(0.12)
+        .setAngularDamping(0.34)
+        .setCcdEnabled(true)
+    );
+    world.createCollider(
+      RAPIER.ColliderDesc.ball(ballRadius)
+        .setDensity(1.25)
+        .setFriction(1.55)
+        .setRestitution(0.06),
+      ballBody
+    );
+
+    const ballMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(ballRadius, 64, 32),
+      new THREE.MeshStandardMaterial({
+        map: makeCheckerTexture(),
+        roughness: 0.42,
+        metalness: 0.02
+      })
+    );
+    ballMesh.castShadow = true;
+    ballMesh.receiveShadow = true;
+    scene.add(ballMesh);
+    physicsObjects.push({ body: ballBody, mesh: ballMesh });
+
+    const keys = new Set();
+    const speedFill = document.querySelector("#speed > div");
+    const progressEl = document.getElementById("progress");
+    const timerEl = document.getElementById("timer");
+    const clock = new THREE.Clock();
+    const fixedDt = 1 / 60;
+    const ballPosition = new THREE.Vector3();
+    const desiredCameraPosition = new THREE.Vector3();
+    const cameraFollowDelta = new THREE.Vector3();
+    const cameraOffset = new THREE.Vector3(8, 5.8, -10);
+    let accumulator = 0;
+
+    addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "r"].includes(key)) {
+        event.preventDefault();
+      }
+      keys.add(key);
+      if (key === "r") resetBall();
+    }, { passive: false });
+    addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
+
+    document.getElementById("resetBall").addEventListener("click", resetBall);
+    document.getElementById("newRun").addEventListener("click", generateNewSlide);
+
+    generateNewSlide();
+    animate();
+
+    function makeStraight({ length, drop, segments }) {
+      const samples = [];
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+        samples.push({
+          p: new THREE.Vector3(0, -drop * vertical, length * u),
+          tangent: new THREE.Vector3(0, -drop * verticalDerivative, length).normalize(),
+          upHint: WORLD_UP,
+          roll: 0
+        });
+      }
+      return createTileFromSamples(samples);
+    }
+
+    function makeDip({ length, depth, drop, segments }) {
+      const samples = [];
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const bowl = Math.sin(Math.PI * u);
+        const bowlDerivative = Math.PI * Math.cos(Math.PI * u);
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+        samples.push({
+          p: new THREE.Vector3(0, -drop * vertical - depth * bowl, length * u),
+          tangent: new THREE.Vector3(0, -drop * verticalDerivative - depth * bowlDerivative, length).normalize(),
+          upHint: WORLD_UP,
+          roll: 0
+        });
+      }
+      return createTileFromSamples(samples);
+    }
+
+    function makeTurn({ sign, angle, radius, drop, bank, segments }) {
+      const samples = [];
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const theta = angle * u;
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+        const p = new THREE.Vector3(
+          sign * radius * (1 - Math.cos(theta)),
+          -drop * vertical,
+          radius * Math.sin(theta)
+        );
+        const tangent = new THREE.Vector3(
+          sign * radius * angle * Math.sin(theta),
+          -drop * verticalDerivative,
+          radius * angle * Math.cos(theta)
+        ).normalize();
+        const roll = sign * bank * Math.sin(Math.PI * u);
+        samples.push({ p, tangent, upHint: WORLD_UP, roll });
+      }
+      return createTileFromSamples(samples);
+    }
+
+    function makeTwisty({ length, sway, drop, bank, segments }) {
+      const samples = [];
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const phase = u * Math.PI * 2;
+        const side = Math.sin(phase) * Math.sin(Math.PI * u);
+        const sideDerivative =
+          Math.cos(phase) * Math.PI * 2 * Math.sin(Math.PI * u) +
+          Math.sin(phase) * Math.PI * Math.cos(Math.PI * u);
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+        const p = new THREE.Vector3(side * sway, -drop * vertical, length * u);
+        const tangent = new THREE.Vector3(sideDerivative * sway, -drop * verticalDerivative, length).normalize();
+        const roll = Math.sin(phase) * bank;
+        samples.push({ p, tangent, upHint: WORLD_UP, roll });
+      }
+      return createTileFromSamples(samples);
+    }
+
+    function createTileFromSamples(samples) {
+      const geometry = buildSweptSlideGeometry(samples, slideProfile);
+      return {
+        geometry,
+        samples,
+        startSocket: new THREE.Matrix4().identity(),
+        endSocket: matrixFromSample(samples[samples.length - 1]),
+        length: estimateSampleLength(samples)
+      };
+    }
+
+    function buildSweptSlideGeometry(samples, profile) {
+      const rows = samples.length;
+      const cols = profile.length;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      const distances = [0];
+
+      for (let i = 1; i < samples.length; i++) {
+        distances[i] = distances[i - 1] + samples[i].p.distanceTo(samples[i - 1].p);
+      }
+      const totalDistance = Math.max(distances[distances.length - 1], 0.0001);
+
+      for (let i = 0; i < rows; i++) {
+        const sample = samples[i];
+        const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+        const u = distances[i] / totalDistance;
+        for (let j = 0; j < cols; j++) {
+          const point = profile[j];
+          const vertex = sample.p.clone()
+            .addScaledVector(frame.right, point.x)
+            .addScaledVector(frame.up, point.y);
+          positions.push(vertex.x, vertex.y, vertex.z);
+          uvs.push(u * totalDistance * 0.16, j / (cols - 1));
+        }
+      }
+
+      for (let i = 0; i < rows - 1; i++) {
+        for (let j = 0; j < cols - 1; j++) {
+          const a = i * cols + j;
+          const b = (i + 1) * cols + j;
+          const c = i * cols + j + 1;
+          const d = (i + 1) * cols + j + 1;
+          indices.push(a, b, c, c, b, d);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    function getFrame(tangentInput, upHintInput = WORLD_UP, roll = 0) {
+      const forward = tangentInput.clone().normalize();
+      let upHint = upHintInput.clone().normalize();
+      if (Math.abs(forward.dot(upHint)) > 0.985) {
+        upHint = FALLBACK_UP.clone();
+      }
+      const right = new THREE.Vector3().crossVectors(upHint, forward).normalize();
+      const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+      if (roll !== 0) {
+        const q = new THREE.Quaternion().setFromAxisAngle(forward, roll);
+        right.applyQuaternion(q);
+        up.applyQuaternion(q);
+      }
+      return { right, up, forward };
+    }
+
+    function matrixFromSample(sample) {
+      const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+      const m = new THREE.Matrix4();
+      m.makeBasis(frame.right, frame.up, frame.forward);
+      m.setPosition(sample.p);
+      return m;
+    }
+
+    function estimateSampleLength(samples) {
+      let length = 0;
+      for (let i = 1; i < samples.length; i++) {
+        length += samples[i].p.distanceTo(samples[i - 1].p);
+      }
+      return length;
+    }
+
+    function smoothStep(u) {
+      return u * u * (3 - 2 * u);
+    }
+
+    function smoothStepDerivative(u) {
+      return 6 * u * (1 - u);
+    }
+
+    function generateNewSlide() {
+      clearSlide();
+      activeSocket.identity();
+      totalTrackLength = 0;
+
+      const chain = makeGeneratedChain();
+      for (const id of chain) {
+        addSlideTile(id);
+      }
+
+      fallResetY = getLowestTrackPointY() - 45;
+      addSupports();
+      addFinishRing();
+      resetBall();
+      frameCameraToBall(true);
+    }
+
+    function makeGeneratedChain() {
+      const turnPairs = [
+        ["left45", "right45"],
+        ["right45", "left45"],
+        ["left90", "right45"],
+        ["right90", "left45"],
+        ["bankLeft", "right45"],
+        ["bankRight", "left45"],
+        ["corkscrew", "drop"],
+        ["dip", "straight"]
+      ];
+      const chain = ["straight", "drop"];
+      for (let i = 0; i < 7; i++) {
+        const pair = turnPairs[Math.floor(Math.random() * turnPairs.length)];
+        chain.push(...pair);
+        if (i % 2 === 0) chain.push(Math.random() > 0.45 ? "drop" : "straight");
+      }
+      chain.push("dip", "straight");
+      return chain;
+    }
+
+    function clearSlide() {
+      while (slideGroup.children.length) {
+        const child = slideGroup.children.pop();
+        disposeObject(child);
+      }
+
+      for (const piece of trackPieces) {
+        if (piece.collider) world.removeCollider(piece.collider, true);
+        if (piece.body) world.removeRigidBody(piece.body);
+      }
+      trackPieces.length = 0;
+      trackSamples.length = 0;
+      finishRing = null;
+      startInfo = null;
+      fallResetY = -60;
+    }
+
+    function addSlideTile(id) {
+      const def = tileDefs[id];
+      const tile = def.build();
+      const placement = activeSocket.clone().multiply(tile.startSocket.clone().invert());
+
+      const material = new THREE.MeshStandardMaterial({
+        color: def.color,
+        map: slideTexture,
+        roughness: 0.5,
+        metalness: 0.02,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(tile.geometry, material);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(placement);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      slideGroup.add(mesh);
+
+      const centerPoints = tile.samples.map((sample) => sample.p.clone().applyMatrix4(placement));
+      const centerLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(centerPoints), lineMaterial);
+      slideGroup.add(centerLine);
+
+      const { vertices, indices } = geometryToTrimesh(tile.geometry);
+      placement.decompose(tempVec, tempQuat, tempScale);
+      const body = world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed()
+          .setTranslation(tempVec.x, tempVec.y, tempVec.z)
+          .setRotation({ x: tempQuat.x, y: tempQuat.y, z: tempQuat.z, w: tempQuat.w })
+      );
+      const collider = world.createCollider(
+        RAPIER.ColliderDesc.trimesh(vertices, indices)
+          .setFriction(1.28)
+          .setRestitution(0.03),
+        body
+      );
+
+      let distance = totalTrackLength;
+      for (const point of centerPoints) {
+        if (trackSamples.length > 0) {
+          distance += point.distanceTo(trackSamples[trackSamples.length - 1].point);
+        }
+        trackSamples.push({ point, distance });
+      }
+
+      const endSocketWorld = placement.clone().multiply(tile.endSocket);
+      trackPieces.push({ id, mesh, centerLine, body, collider, endSocketWorld, placement, length: tile.length });
+      activeSocket.copy(endSocketWorld);
+      totalTrackLength += tile.length;
+
+      if (!startInfo) {
+        startInfo = makeTrackPlacementFromMatrix(placement, tile.samples[0]);
+      }
+    }
+
+    function geometryToTrimesh(geometry) {
+      const position = geometry.getAttribute("position");
+      const vertices = new Float32Array(position.count * 3);
+      for (let i = 0; i < position.count; i++) {
+        vertices[i * 3] = position.getX(i);
+        vertices[i * 3 + 1] = position.getY(i);
+        vertices[i * 3 + 2] = position.getZ(i);
+      }
+
+      const sourceIndex = geometry.index.array;
+      const indices = new Uint32Array(sourceIndex.length);
+      for (let i = 0; i < sourceIndex.length; i++) {
+        indices[i] = sourceIndex[i];
+      }
+      return { vertices, indices };
+    }
+
+    function addSupports() {
+      const stride = Math.max(10, Math.floor(trackSamples.length / 24));
+      for (let i = 0; i < trackSamples.length; i += stride) {
+        const point = trackSamples[i].point;
+        const height = Math.max(0.8, point.y + 5.2);
+        if (height < 1.3) continue;
+
+        const support = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.2, height, 10),
+          supportMaterial
+        );
+        support.position.set(point.x, point.y - height / 2 - 0.55, point.z);
+        support.castShadow = true;
+        support.receiveShadow = true;
+        slideGroup.add(support);
+      }
+    }
+
+    function getLowestTrackPointY() {
+      if (trackSamples.length === 0) return -15;
+      let lowest = Infinity;
+      for (const sample of trackSamples) {
+        lowest = Math.min(lowest, sample.point.y);
+      }
+      return lowest;
+    }
+
+    function addFinishRing() {
+      const lastPiece = trackPieces[trackPieces.length - 1];
+      const lastTile = tileDefs[lastPiece.id].build();
+      const sample = lastTile.samples[lastTile.samples.length - 1];
+      const frameInfo = makeTrackPlacementFromMatrix(lastPiece.placement, sample);
+
+      finishRing = new THREE.Mesh(
+        new THREE.TorusGeometry(2.9, 0.08, 16, 96),
+        new THREE.MeshStandardMaterial({
+          color: 0xf6f08a,
+          emissive: 0x302800,
+          roughness: 0.35
+        })
+      );
+      finishRing.position.copy(frameInfo.center).addScaledVector(frameInfo.up, 0.55);
+      finishRing.quaternion.setFromRotationMatrix(tempMatrix.makeBasis(frameInfo.right, frameInfo.up, frameInfo.forward));
+      finishRing.castShadow = true;
+      slideGroup.add(finishRing);
+    }
+
+    function makeTrackPlacementFromMatrix(placement, sample) {
+      const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+      const center = sample.p.clone().applyMatrix4(placement);
+      const right = frame.right.clone().transformDirection(placement);
+      const up = frame.up.clone().transformDirection(placement);
+      const forward = frame.forward.clone().transformDirection(placement);
+      return { center, right, up, forward };
+    }
+
+    function resetBall() {
+      const info = startInfo || {
+        center: new THREE.Vector3(),
+        up: WORLD_UP.clone(),
+        forward: new THREE.Vector3(0, 0, 1)
+      };
+      const spawn = info.center.clone()
+        .addScaledVector(info.up, ballRadius + 0.2)
+        .addScaledVector(info.forward, 0.25);
+
+      ballBody.setTranslation({ x: spawn.x, y: spawn.y, z: spawn.z }, true);
+      ballBody.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      ballPosition.copy(spawn);
+      runStartedAt = performance.now();
+      finished = false;
+    }
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const desiredMove = new THREE.Vector3();
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const torqueAxis = new THREE.Vector3();
+
+    function applyBallControls(dt) {
+      desiredMove.set(0, 0, 0);
+
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      if (forward.lengthSq() < 0.0001) forward.set(0, 0, 1);
+      forward.normalize();
+      right.crossVectors(forward, up).normalize();
+
+      if (keys.has("arrowup")) desiredMove.add(forward);
+      if (keys.has("arrowdown")) desiredMove.sub(forward);
+      if (keys.has("arrowright")) desiredMove.add(right);
+      if (keys.has("arrowleft")) desiredMove.sub(right);
+
+      if (desiredMove.lengthSq() === 0) return;
+      desiredMove.normalize();
+
+      const velocity = ballBody.linvel();
+      const horizontalSpeed = Math.hypot(velocity.x, velocity.z);
+      const maxSpeed = 16.5;
+      const drive = horizontalSpeed < maxSpeed ? 9.8 : 2.35;
+
+      torqueAxis.crossVectors(up, desiredMove).normalize();
+      ballBody.applyTorqueImpulse({
+        x: torqueAxis.x * drive * dt,
+        y: torqueAxis.y * drive * dt,
+        z: torqueAxis.z * drive * dt
+      }, true);
+
+      ballBody.applyImpulse({
+        x: desiredMove.x * 0.018 * dt,
+        y: 0,
+        z: desiredMove.z * 0.018 * dt
+      }, true);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const frameDt = Math.min(clock.getDelta(), 0.05);
+      accumulator += frameDt;
+
+      while (accumulator >= fixedDt) {
+        applyBallControls(fixedDt);
+        world.step();
+        accumulator -= fixedDt;
+      }
+
+      for (const object of physicsObjects) {
+        const t = object.body.translation();
+        const r = object.body.rotation();
+        object.mesh.position.set(t.x, t.y, t.z);
+        object.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      }
+
+      const t = ballBody.translation();
+      ballPosition.set(t.x, t.y, t.z);
+      if (t.y < fallResetY) resetBall();
+
+      const progress = estimateProgress(ballPosition);
+      if (!finished && progress > 0.985) {
+        finished = true;
+      }
+
+      frameCameraToBall(false);
+      controls.update();
+
+      const v = ballBody.linvel();
+      const speedPct = Math.min(100, (Math.hypot(v.x, v.z) / 16.5) * 100);
+      speedFill.style.width = `${speedPct}%`;
+      progressEl.textContent = `${Math.round(progress * 100)}%`;
+      timerEl.textContent = ((performance.now() - runStartedAt) / 1000).toFixed(1);
+      if (finished) progressEl.textContent = "Done";
+
+      renderer.render(scene, camera);
+    }
+
+    function frameCameraToBall(immediate) {
+      if (immediate) {
+        camera.position.copy(ballPosition).add(cameraOffset);
+        controls.target.copy(ballPosition);
+        controls.update();
+        return;
+      }
+
+      desiredCameraPosition.copy(controls.target).lerp(ballPosition, 0.095);
+      cameraFollowDelta.copy(desiredCameraPosition).sub(controls.target);
+      camera.position.add(cameraFollowDelta);
+      controls.target.copy(desiredCameraPosition);
+    }
+
+    function estimateProgress(position) {
+      if (trackSamples.length === 0 || totalTrackLength <= 0) return 0;
+      let closestDistanceSq = Infinity;
+      let closestTrackDistance = 0;
+
+      const step = Math.max(1, Math.floor(trackSamples.length / 240));
+      for (let i = 0; i < trackSamples.length; i += step) {
+        const sample = trackSamples[i];
+        const d = sample.point.distanceToSquared(position);
+        if (d < closestDistanceSq) {
+          closestDistanceSq = d;
+          closestTrackDistance = sample.distance;
+        }
+      }
+      return THREE.MathUtils.clamp(closestTrackDistance / totalTrackLength, 0, 1);
+    }
+
+    function makeCheckerTexture(size = 1024, cellsX = 16, cellsY = 8) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size / 2;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width / cellsX;
+      const h = canvas.height / cellsY;
+      for (let y = 0; y < cellsY; y++) {
+        for (let x = 0; x < cellsX; x++) {
+          ctx.fillStyle = (x + y) % 2 === 0 ? "#f2f3f2" : "#151817";
+          ctx.fillRect(x * w, y * h, w + 1, h + 1);
+        }
+      }
+      ctx.strokeStyle = "rgba(0,0,0,0.18)";
+      ctx.lineWidth = 3;
+      for (let x = 0; x <= cellsX; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * w, 0);
+        ctx.lineTo(x * w, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= cellsY; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * h);
+        ctx.lineTo(canvas.width, y * h);
+        ctx.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      return texture;
+    }
+
+    function makeSlideTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 512;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#d8f1ff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let x = 0; x < canvas.width; x += 32) {
+        ctx.fillStyle = x % 64 === 0 ? "rgba(255,255,255,0.22)" : "rgba(12,56,86,0.08)";
+        ctx.fillRect(x, 0, 16, canvas.height);
+      }
+      ctx.strokeStyle = "rgba(7, 48, 72, 0.16)";
+      ctx.lineWidth = 2;
+      for (let y = 22; y < canvas.height; y += 46) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y + 8 * Math.sin(y));
+        ctx.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1, 1);
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    }
+
+    function disposeObject(object) {
+      object.traverse?.((child) => {
+        child.geometry?.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((material) => material.dispose());
+        } else {
+          child.material?.dispose();
+        }
+      });
+    }
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    });
+  </script>
+</body>
+</html>

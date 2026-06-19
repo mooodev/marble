@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Tile-Based Waterslide Editor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    #panel {
+      position: fixed;
+      z-index: 10;
+      top: 14px;
+      left: 14px;
+      width: 320px;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      box-sizing: border-box;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.88);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(14px);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    p {
+      margin: 6px 0 12px;
+      color: #b6c2d9;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: #d7e1f7;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    select, button, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      background: rgba(30, 41, 59, 0.9);
+      color: #eef5ff;
+      font: inherit;
+    }
+
+    select {
+      padding: 10px 12px;
+      outline: none;
+    }
+
+    button {
+      padding: 10px 11px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: rgba(51, 65, 85, 0.95);
+      border-color: rgba(125, 211, 252, 0.55);
+    }
+
+    .primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border-color: rgba(147, 197, 253, 0.65);
+      font-weight: 800;
+    }
+
+    .danger {
+      background: rgba(127, 29, 29, 0.75);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    textarea {
+      height: 120px;
+      padding: 10px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    #stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 12px 0;
+      color: #dbeafe;
+      font-size: 12px;
+    }
+
+    .stat {
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .hint {
+      color: #93a4bf;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Waterslide Tile Editor</h1>
+    <p>
+      Each piece is generated from a curved center path plus a U-shaped profile. New pieces snap to the current end socket.
+    </p>
+
+    <label for="tileSelect">Preview / selected tile</label>
+    <select id="tileSelect"></select>
+    <button id="addSelected" class="primary" style="margin-top: 8px;">Add selected tile</button>
+
+    <label>Quick add</label>
+    <div id="quickButtons" class="grid"></div>
+
+    <div class="row">
+      <button id="undo">Undo</button>
+      <button id="reset" class="danger">Reset</button>
+    </div>
+
+    <div id="stats">
+      <div class="stat"><strong id="pieceCount">0</strong><br />pieces</div>
+      <div class="stat"><strong id="lengthEstimate">0.0</strong><br />approx. length</div>
+    </div>
+
+    <label>Exported tile chain</label>
+    <textarea id="exportBox" spellcheck="false" readonly></textarea>
+
+    <p class="hint">
+      Mouse: orbit, scroll to zoom, right-drag to pan. The red arrow is the active socket; the translucent piece is the next preview.
+    </p>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const WORLD_UP = new THREE.Vector3(0, 1, 0);
+    const FALLBACK_UP = new THREE.Vector3(1, 0, 0);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xbad7f2);
+    scene.fog = new THREE.Fog(0xbad7f2, 70, 210);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(24, 18, 30);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 10);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x4f5f75, 2.2);
+    scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 2.8);
+    sun.position.set(18, 35, 12);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 120;
+    sun.shadow.camera.left = -55;
+    sun.shadow.camera.right = 55;
+    sun.shadow.camera.top = 55;
+    sun.shadow.camera.bottom = -55;
+    scene.add(sun);
+
+    const grid = new THREE.GridHelper(140, 70, 0x7c8ea8, 0xa6b5cc);
+    grid.position.y = -5.05;
+    scene.add(grid);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 140),
+      new THREE.MeshStandardMaterial({ color: 0x93a9c5, roughness: 0.9 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -5.1;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const slideProfile = [
+      [-2.40, 0.92],
+      [-2.00, 0.48],
+      [-1.45, 0.08],
+      [-0.75, -0.18],
+      [0.00, -0.28],
+      [0.75, -0.18],
+      [1.45, 0.08],
+      [2.00, 0.48],
+      [2.40, 0.92]
+    ].map(([x, y]) => new THREE.Vector2(x, y));
+
+    const pieces = [];
+    let activeSocket = new THREE.Matrix4().identity();
+    let ghostMesh = null;
+    let selectedTileId = "straight";
+    let pathLengthEstimate = 0;
+
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.45 });
+    const ghostMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      roughness: 0.55,
+      depthWrite: false
+    });
+
+    const socketMarker = makeSocketMarker();
+    scene.add(socketMarker);
+
+    const tileDefs = {
+      straight: {
+        label: "Straight",
+        color: 0x0ea5e9,
+        build: () => makeStraight({ length: 10, drop: 0, segments: 24 })
+      },
+      drop: {
+        label: "Drop",
+        color: 0x2563eb,
+        build: () => makeStraight({ length: 10, drop: 4, segments: 28 })
+      },
+      rise: {
+        label: "Gentle rise",
+        color: 0x38bdf8,
+        build: () => makeStraight({ length: 8, drop: -2, segments: 22 })
+      },
+      left45: {
+        label: "Left 45°",
+        color: 0x14b8a6,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 4, radius: 9, drop: 0, bank: 0, segments: 32 })
+      },
+      right45: {
+        label: "Right 45°",
+        color: 0x14b8a6,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 4, radius: 9, drop: 0, bank: 0, segments: 32 })
+      },
+      left90: {
+        label: "Left 90°",
+        color: 0x22c55e,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 2, radius: 9, drop: 0, bank: 0, segments: 48 })
+      },
+      right90: {
+        label: "Right 90°",
+        color: 0x22c55e,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 2, radius: 9, drop: 0, bank: 0, segments: 48 })
+      },
+      bankLeft: {
+        label: "Banked left",
+        color: 0xf59e0b,
+        build: () => makeTurn({ sign: -1, angle: Math.PI / 2, radius: 10, drop: 1.5, bank: THREE.MathUtils.degToRad(22), segments: 54 })
+      },
+      bankRight: {
+        label: "Banked right",
+        color: 0xf59e0b,
+        build: () => makeTurn({ sign: 1, angle: Math.PI / 2, radius: 10, drop: 1.5, bank: THREE.MathUtils.degToRad(22), segments: 54 })
+      },
+      corkscrew: {
+        label: "Twisty S",
+        color: 0xa855f7,
+        build: () => makeTwisty({ length: 14, sway: 3.2, drop: 2.2, bank: THREE.MathUtils.degToRad(18), segments: 52 })
+      }
+    };
+
+    initialiseUi();
+    updateSocketMarker();
+    updateGhost();
+    updateStatsAndExport();
+    animate();
+
+    function initialiseUi() {
+      const select = document.getElementById("tileSelect");
+      const quickButtons = document.getElementById("quickButtons");
+
+      for (const [id, def] of Object.entries(tileDefs)) {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = def.label;
+        select.appendChild(option);
+
+        const button = document.createElement("button");
+        button.textContent = def.label;
+        button.addEventListener("click", () => addTile(id));
+        quickButtons.appendChild(button);
+      }
+
+      select.value = selectedTileId;
+      select.addEventListener("change", () => {
+        selectedTileId = select.value;
+        updateGhost();
+      });
+
+      document.getElementById("addSelected").addEventListener("click", () => addTile(selectedTileId));
+      document.getElementById("undo").addEventListener("click", undoTile);
+      document.getElementById("reset").addEventListener("click", resetTiles);
+    }
+
+    function makeStraight({ length, drop, segments }) {
+      const samples = [];
+
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+
+        samples.push({
+          p: new THREE.Vector3(0, -drop * vertical, length * u),
+          tangent: new THREE.Vector3(0, -drop * verticalDerivative, length).normalize(),
+          upHint: WORLD_UP,
+          roll: 0
+        });
+      }
+
+      return createTileFromSamples(samples);
+    }
+
+    function makeTurn({ sign, angle, radius, drop, bank, segments }) {
+      const samples = [];
+
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const theta = angle * u;
+
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+
+        const p = new THREE.Vector3(
+          sign * radius * (1 - Math.cos(theta)),
+          -drop * vertical,
+          radius * Math.sin(theta)
+        );
+
+        const tangent = new THREE.Vector3(
+          sign * radius * angle * Math.sin(theta),
+          -drop * verticalDerivative,
+          radius * angle * Math.cos(theta)
+        ).normalize();
+
+        // Bank only inside the piece. Start/end sockets remain upright and compatible.
+        const roll = sign * bank * Math.sin(Math.PI * u);
+
+        samples.push({ p, tangent, upHint: WORLD_UP, roll });
+      }
+
+      return createTileFromSamples(samples);
+    }
+
+    function makeTwisty({ length, sway, drop, bank, segments }) {
+      const samples = [];
+
+      for (let i = 0; i <= segments; i++) {
+        const u = i / segments;
+        const phase = u * Math.PI * 2;
+
+        const side = Math.sin(phase) * Math.sin(Math.PI * u);
+        const sideDerivative =
+          Math.cos(phase) * Math.PI * 2 * Math.sin(Math.PI * u) +
+          Math.sin(phase) * Math.PI * Math.cos(Math.PI * u);
+        const vertical = smoothStep(u);
+        const verticalDerivative = smoothStepDerivative(u);
+
+        const p = new THREE.Vector3(
+          side * sway,
+          -drop * vertical,
+          length * u
+        );
+
+        const tangent = new THREE.Vector3(
+          sideDerivative * sway,
+          -drop * verticalDerivative,
+          length
+        ).normalize();
+
+        const roll = Math.sin(phase) * bank;
+        samples.push({ p, tangent, upHint: WORLD_UP, roll });
+      }
+
+      return createTileFromSamples(samples);
+    }
+
+    function createTileFromSamples(samples) {
+      const geometry = buildSweptSlideGeometry(samples, slideProfile);
+      const startSocket = new THREE.Matrix4().identity();
+      const endSocket = matrixFromSample(samples[samples.length - 1]);
+      const length = estimateSampleLength(samples);
+      return { geometry, startSocket, endSocket, samples, length };
+    }
+
+    function smoothStep(u) {
+      return u * u * (3 - 2 * u);
+    }
+
+    function smoothStepDerivative(u) {
+      return 6 * u * (1 - u);
+    }
+
+    function buildSweptSlideGeometry(samples, profile) {
+      const rows = samples.length;
+      const cols = profile.length;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      const distances = [0];
+
+      for (let i = 1; i < samples.length; i++) {
+        distances[i] = distances[i - 1] + samples[i].p.distanceTo(samples[i - 1].p);
+      }
+      const totalDistance = Math.max(distances[distances.length - 1], 0.0001);
+
+      for (let i = 0; i < rows; i++) {
+        const sample = samples[i];
+        const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+        const u = distances[i] / totalDistance;
+
+        for (let j = 0; j < cols; j++) {
+          const point = profile[j];
+          const vertex = sample.p.clone()
+            .addScaledVector(frame.right, point.x)
+            .addScaledVector(frame.up, point.y);
+
+          positions.push(vertex.x, vertex.y, vertex.z);
+          uvs.push(u * totalDistance * 0.14, j / (cols - 1));
+        }
+      }
+
+      for (let i = 0; i < rows - 1; i++) {
+        for (let j = 0; j < cols - 1; j++) {
+          const a = i * cols + j;
+          const b = (i + 1) * cols + j;
+          const c = i * cols + j + 1;
+          const d = (i + 1) * cols + j + 1;
+          indices.push(a, b, c, c, b, d);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    function getFrame(tangentInput, upHintInput = WORLD_UP, roll = 0) {
+      const forward = tangentInput.clone().normalize();
+      let upHint = upHintInput.clone().normalize();
+
+      if (Math.abs(forward.dot(upHint)) > 0.985) {
+        upHint = FALLBACK_UP.clone();
+      }
+
+      const right = new THREE.Vector3().crossVectors(upHint, forward).normalize();
+      const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+
+      if (roll !== 0) {
+        const q = new THREE.Quaternion().setFromAxisAngle(forward, roll);
+        right.applyQuaternion(q);
+        up.applyQuaternion(q);
+      }
+
+      return { right, up, forward };
+    }
+
+    function matrixFromSample(sample) {
+      const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+      const m = new THREE.Matrix4();
+      m.makeBasis(frame.right, frame.up, frame.forward);
+      m.setPosition(sample.p);
+      return m;
+    }
+
+    function estimateSampleLength(samples) {
+      let length = 0;
+      for (let i = 1; i < samples.length; i++) {
+        length += samples[i].p.distanceTo(samples[i - 1].p);
+      }
+      return length;
+    }
+
+    function addTile(id) {
+      const def = tileDefs[id];
+      const tile = def.build();
+      const startInverse = tile.startSocket.clone().invert();
+      const placement = activeSocket.clone().multiply(startInverse);
+
+      const mesh = new THREE.Mesh(
+        tile.geometry,
+        new THREE.MeshStandardMaterial({
+          color: def.color,
+          roughness: 0.42,
+          metalness: 0.02,
+          side: THREE.DoubleSide
+        })
+      );
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(placement);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+
+      const centerPoints = tile.samples.map((sample) => sample.p.clone().applyMatrix4(placement));
+      const centerLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(centerPoints), lineMaterial);
+      scene.add(centerLine);
+
+      const endSocketWorld = placement.clone().multiply(tile.endSocket);
+      pieces.push({ id, mesh, centerLine, endSocketWorld, placement, length: tile.length });
+      activeSocket.copy(endSocketWorld);
+      pathLengthEstimate += tile.length;
+
+      updateSocketMarker();
+      updateGhost();
+      updateStatsAndExport();
+    }
+
+    function undoTile() {
+      const piece = pieces.pop();
+      if (!piece) return;
+
+      scene.remove(piece.mesh);
+      scene.remove(piece.centerLine);
+      piece.mesh.geometry.dispose();
+      piece.mesh.material.dispose();
+      piece.centerLine.geometry.dispose();
+
+      pathLengthEstimate = Math.max(0, pathLengthEstimate - piece.length);
+      activeSocket.identity();
+      if (pieces.length > 0) {
+        activeSocket.copy(pieces[pieces.length - 1].endSocketWorld);
+      }
+
+      updateSocketMarker();
+      updateGhost();
+      updateStatsAndExport();
+    }
+
+    function resetTiles() {
+      while (pieces.length > 0) undoTile();
+      pathLengthEstimate = 0;
+      activeSocket.identity();
+      updateSocketMarker();
+      updateGhost();
+      updateStatsAndExport();
+    }
+
+    function updateGhost() {
+      if (ghostMesh) {
+        scene.remove(ghostMesh);
+        ghostMesh.geometry.dispose();
+        ghostMesh = null;
+      }
+
+      const tile = tileDefs[selectedTileId].build();
+      const placement = activeSocket.clone().multiply(tile.startSocket.clone().invert());
+      ghostMesh = new THREE.Mesh(tile.geometry, ghostMaterial);
+      ghostMesh.matrixAutoUpdate = false;
+      ghostMesh.matrix.copy(placement);
+      ghostMesh.renderOrder = 5;
+      scene.add(ghostMesh);
+    }
+
+    function makeSocketMarker() {
+      const group = new THREE.Group();
+      group.matrixAutoUpdate = false;
+
+      const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 3.2, 0xef4444, 0.75, 0.42);
+      group.add(arrow);
+
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(2.48, 0.045, 8, 64),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      group.add(ring);
+
+      return group;
+    }
+
+    function updateSocketMarker() {
+      socketMarker.matrix.copy(activeSocket);
+    }
+
+    function updateStatsAndExport() {
+      document.getElementById("pieceCount").textContent = pieces.length;
+      document.getElementById("lengthEstimate").textContent = pathLengthEstimate.toFixed(1);
+
+      const data = pieces.map((piece, index) => ({
+        index,
+        type: piece.id,
+        matrix: piece.placement.elements.map((n) => Number(n.toFixed(4)))
+      }));
+
+      document.getElementById("exportBox").value = JSON.stringify(data, null, 2);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Starter chain so the editor is not empty.
+    addTile("straight");
+    addTile("left45");
+    addTile("drop");
+  </script>
+</body>
+</html>

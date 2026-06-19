@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rapier + Three.js Ball Roller</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b1020;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    canvas { display: block; }
+    #hud {
+      position: fixed;
+      left: 18px;
+      top: 18px;
+      max-width: 360px;
+      padding: 14px 16px;
+      color: rgba(255,255,255,0.92);
+      background: rgba(8, 12, 22, 0.62);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 14px 40px rgba(0,0,0,0.25);
+      user-select: none;
+    }
+    #hud h1 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      letter-spacing: 0.02em;
+    }
+    #hud p {
+      margin: 4px 0;
+      font-size: 13px;
+      line-height: 1.4;
+      color: rgba(255,255,255,0.78);
+    }
+    kbd {
+      padding: 1px 6px;
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.12);
+      color: white;
+      font-size: 12px;
+    }
+    #speed {
+      margin-top: 8px;
+      height: 6px;
+      border-radius: 99px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+    }
+    #speed > div {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #8ed0ff, #ffffff);
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">
+    <h1>Rapier + Three.js Ball Roller</h1>
+    <p><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> roll the checkered ball relative to the camera.</p>
+    <p><kbd>Mouse</kbd> orbit camera · <kbd>R</kbd> reset · Physics-driven torque, friction, restitution, and CCD.</p>
+    <div id="speed"><div></div></div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import RAPIER from '@dimforge/rapier3d-compat';
+
+    await RAPIER.init();
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1020);
+    scene.fog = new THREE.Fog(0x0b1020, 32, 90);
+
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 250);
+    camera.position.set(8, 6, 10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.065;
+    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.minDistance = 5;
+    controls.maxDistance = 28;
+    controls.target.set(0, 0.5, 0);
+
+    const hemi = new THREE.HemisphereLight(0xddeeff, 0x223344, 1.2);
+    scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 3.2);
+    sun.position.set(-8, 14, 8);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 60;
+    sun.shadow.camera.left = -30;
+    sun.shadow.camera.right = 30;
+    sun.shadow.camera.top = 30;
+    sun.shadow.camera.bottom = -30;
+    scene.add(sun);
+
+    const fill = new THREE.PointLight(0x88ccff, 0.8, 30);
+    fill.position.set(12, 5, -8);
+    scene.add(fill);
+
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    world.timestep = 1 / 60;
+
+    const physicsObjects = [];
+    const tempEuler = new THREE.Euler();
+    const tempQuat = new THREE.Quaternion();
+
+    function makeCheckerTexture(size = 1024, cellsX = 16, cellsY = 8, colorA = '#f4f4f4', colorB = '#151515') {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size / 2;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width / cellsX;
+      const h = canvas.height / cellsY;
+
+      ctx.fillStyle = colorA;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < cellsY; y++) {
+        for (let x = 0; x < cellsX; x++) {
+          ctx.fillStyle = (x + y) % 2 === 0 ? colorA : colorB;
+          ctx.fillRect(x * w, y * h, w + 1, h + 1);
+        }
+      }
+
+      // Subtle longitude/latitude lines make the sphere read as a rolling ball.
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = 3;
+      for (let x = 0; x <= cellsX; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * w, 0);
+        ctx.lineTo(x * w, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= cellsY; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * h);
+        ctx.lineTo(canvas.width, y * h);
+        ctx.stroke();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      return texture;
+    }
+
+    function makeGridTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#59646d';
+      ctx.fillRect(0, 0, 512, 512);
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          ctx.fillStyle = (x + y) % 2 ? '#515b63' : '#65717b';
+          ctx.fillRect(x * 32, y * 32, 32, 32);
+        }
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= 16; i++) {
+        ctx.beginPath(); ctx.moveTo(i * 32, 0); ctx.lineTo(i * 32, 512); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * 32); ctx.lineTo(512, i * 32); ctx.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(10, 10);
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    }
+
+    function createFixedBox({ position, size, rotation = [0, 0, 0], material, name = '' }) {
+      tempEuler.set(rotation[0], rotation[1], rotation[2]);
+      tempQuat.setFromEuler(tempEuler);
+
+      const bodyDesc = RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(position[0], position[1], position[2])
+        .setRotation({ x: tempQuat.x, y: tempQuat.y, z: tempQuat.z, w: tempQuat.w });
+      const body = world.createRigidBody(bodyDesc);
+      const collider = RAPIER.ColliderDesc.cuboid(size[0] / 2, size[1] / 2, size[2] / 2)
+        .setFriction(1.15)
+        .setRestitution(0.08);
+      world.createCollider(collider, body);
+
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), material);
+      mesh.name = name;
+      mesh.position.set(position[0], position[1], position[2]);
+      mesh.quaternion.copy(tempQuat);
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      scene.add(mesh);
+      return { body, mesh };
+    }
+
+    function createFixedCylinder({ position, radius, height, material }) {
+      const body = world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(position[0], position[1], position[2])
+      );
+      const collider = RAPIER.ColliderDesc.cylinder(height / 2, radius)
+        .setFriction(1.05)
+        .setRestitution(0.18);
+      world.createCollider(collider, body);
+
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 40), material);
+      mesh.position.set(position[0], position[1], position[2]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return { body, mesh };
+    }
+
+    const floorMaterial = new THREE.MeshStandardMaterial({
+      map: makeGridTexture(),
+      roughness: 0.82,
+      metalness: 0.02
+    });
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x344454, roughness: 0.8 });
+    const rampMaterial = new THREE.MeshStandardMaterial({ color: 0x8b735d, roughness: 0.72 });
+    const bumperMaterial = new THREE.MeshStandardMaterial({ color: 0x25364a, roughness: 0.5, metalness: 0.05 });
+
+    // Main arena.
+    createFixedBox({ position: [0, -0.1, 0], size: [34, 0.2, 34], material: floorMaterial, name: 'floor' });
+    createFixedBox({ position: [0, 0.45, -17], size: [34, 1.1, 0.7], material: wallMaterial });
+    createFixedBox({ position: [0, 0.45, 17], size: [34, 1.1, 0.7], material: wallMaterial });
+    createFixedBox({ position: [-17, 0.45, 0], size: [0.7, 1.1, 34], material: wallMaterial });
+    createFixedBox({ position: [17, 0.45, 0], size: [0.7, 1.1, 34], material: wallMaterial });
+
+    // Course details: sloped ramps, rails, and bumpers.
+    createFixedBox({ position: [-5.5, 0.25, -4.8], size: [7.0, 0.35, 3.0], rotation: [0.0, 0.0, -0.28], material: rampMaterial, name: 'left ramp' });
+    createFixedBox({ position: [6.8, 0.42, 4.0], size: [8.0, 0.35, 3.0], rotation: [0.0, 0.0, 0.22], material: rampMaterial, name: 'right ramp' });
+    createFixedBox({ position: [0, 0.22, 8.5], size: [9.0, 0.38, 1.5], rotation: [-0.18, 0.0, 0.0], material: rampMaterial, name: 'low wedge' });
+
+    createFixedBox({ position: [-7.8, 0.32, 5.8], size: [0.5, 0.65, 7.5], rotation: [0, 0.4, 0], material: bumperMaterial });
+    createFixedBox({ position: [4.8, 0.32, -7.2], size: [0.5, 0.65, 7.5], rotation: [0, -0.52, 0], material: bumperMaterial });
+    createFixedBox({ position: [0, 0.32, -1.5], size: [5.8, 0.65, 0.55], rotation: [0, -0.25, 0], material: bumperMaterial });
+
+    createFixedCylinder({ position: [-9, 0.5, -9], radius: 0.55, height: 1.0, material: bumperMaterial });
+    createFixedCylinder({ position: [9, 0.5, -8], radius: 0.55, height: 1.0, material: bumperMaterial });
+    createFixedCylinder({ position: [8, 0.5, 9], radius: 0.55, height: 1.0, material: bumperMaterial });
+    createFixedCylinder({ position: [-9, 0.5, 8], radius: 0.55, height: 1.0, material: bumperMaterial });
+
+    // Ball body and mesh.
+    const ballRadius = 0.62;
+    const ballBody = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(0, 3.0, 0)
+        .setLinearDamping(0.22)
+        .setAngularDamping(0.42)
+        .setCcdEnabled(true)
+    );
+    world.createCollider(
+      RAPIER.ColliderDesc.ball(ballRadius)
+        .setDensity(1.25)
+        .setFriction(1.75)
+        .setRestitution(0.12),
+      ballBody
+    );
+
+    const ballMaterial = new THREE.MeshStandardMaterial({
+      map: makeCheckerTexture(),
+      roughness: 0.45,
+      metalness: 0.02
+    });
+    const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 64, 32), ballMaterial);
+    ballMesh.castShadow = true;
+    ballMesh.receiveShadow = true;
+    scene.add(ballMesh);
+    physicsObjects.push({ body: ballBody, mesh: ballMesh });
+
+    // A small target marker.
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.4, 0.045, 16, 96),
+      new THREE.MeshStandardMaterial({ color: 0xa7e5ff, emissive: 0x13334a, roughness: 0.35 })
+    );
+    ring.position.set(12, 0.07, 12);
+    ring.rotation.x = -Math.PI / 2;
+    ring.receiveShadow = true;
+    scene.add(ring);
+
+    const keys = new Set();
+    addEventListener('keydown', (event) => {
+      const key = event.key.toLowerCase();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'r'].includes(key)) event.preventDefault();
+      keys.add(key);
+      if (key === 'r') resetBall();
+    }, { passive: false });
+    addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
+
+    function resetBall() {
+      ballBody.setTranslation({ x: 0, y: 3.0, z: 0 }, true);
+      ballBody.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const desiredMove = new THREE.Vector3();
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const torqueAxis = new THREE.Vector3();
+
+    function applyBallControls(dt) {
+      desiredMove.set(0, 0, 0);
+
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
+      forward.normalize();
+      right.crossVectors(forward, up).normalize();
+
+      if (keys.has('arrowup')) desiredMove.add(forward);
+      if (keys.has('arrowdown')) desiredMove.sub(forward);
+      if (keys.has('arrowright')) desiredMove.add(right);
+      if (keys.has('arrowleft')) desiredMove.sub(right);
+
+      if (desiredMove.lengthSq() === 0) return;
+      desiredMove.normalize();
+
+      const velocity = ballBody.linvel();
+      const horizontalSpeed = Math.hypot(velocity.x, velocity.z);
+      const maxSpeed = 11.5;
+      const drive = horizontalSpeed < maxSpeed ? 8.8 : 2.2;
+
+      // For a sphere rolling without sliding, the torque axis is perpendicular
+      // to the desired ground direction: up × direction.
+      torqueAxis.crossVectors(up, desiredMove).normalize();
+      ballBody.applyTorqueImpulse({
+        x: torqueAxis.x * drive * dt,
+        y: torqueAxis.y * drive * dt,
+        z: torqueAxis.z * drive * dt
+      }, true);
+
+      // A tiny center impulse keeps keyboard steering responsive without overriding physics.
+      ballBody.applyImpulse({
+        x: desiredMove.x * 0.016 * dt,
+        y: 0,
+        z: desiredMove.z * 0.016 * dt
+      }, true);
+    }
+
+    const speedFill = document.querySelector('#speed > div');
+    const clock = new THREE.Clock();
+    let accumulator = 0;
+    const fixedDt = 1 / 60;
+    const camOffset = new THREE.Vector3(8, 5.2, 10);
+    const ballPosition = new THREE.Vector3();
+    const desiredCameraPosition = new THREE.Vector3();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const frameDt = Math.min(clock.getDelta(), 0.05);
+      accumulator += frameDt;
+
+      while (accumulator >= fixedDt) {
+        applyBallControls(fixedDt);
+        world.step();
+        accumulator -= fixedDt;
+      }
+
+      for (const object of physicsObjects) {
+        const t = object.body.translation();
+        const r = object.body.rotation();
+        object.mesh.position.set(t.x, t.y, t.z);
+        object.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      }
+
+      const t = ballBody.translation();
+      ballPosition.set(t.x, t.y, t.z);
+      if (t.y < -12) resetBall();
+
+      desiredCameraPosition.copy(ballPosition).add(camOffset);
+      camera.position.lerp(desiredCameraPosition, 0.035);
+      controls.target.lerp(ballPosition, 0.08);
+      controls.update();
+
+      const v = ballBody.linvel();
+      const speedPct = Math.min(100, (Math.hypot(v.x, v.z) / 11.5) * 100);
+      speedFill.style.width = `${speedPct}%`;
+
+      renderer.render(scene, camera);
+    }
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    });
+
+    animate();
+  </script>
+</body>
+</html>
