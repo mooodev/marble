@@ -98,7 +98,7 @@
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     document.body.appendChild(renderer.domElement);
@@ -376,8 +376,8 @@
     }
 
     const speedFill = document.querySelector('#speed > div');
-    const clock = new THREE.Clock();
     let accumulator = 0;
+    let previousFrameTime = performance.now();
     const fixedDt = 1 / 60;
     const camOffset = new THREE.Vector3(8, 5.2, 10);
     const ballPosition = new THREE.Vector3();
@@ -385,7 +385,9 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      const frameDt = Math.min(clock.getDelta(), 0.05);
+      const now = performance.now();
+      const frameDt = Math.min((now - previousFrameTime) / 1000, 0.05);
+      previousFrameTime = now;
       accumulator += frameDt;
 
       while (accumulator >= fixedDt) {

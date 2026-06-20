@@ -40,11 +40,45 @@
       user-select: none;
     }
 
+    #hudHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
     #hud h1 {
-      margin: 0 0 8px;
+      margin: 0;
       font-size: 18px;
       line-height: 1.15;
       letter-spacing: 0;
+    }
+
+    #hudToggle {
+      width: 34px;
+      min-width: 34px;
+      min-height: 30px;
+      padding: 0;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    #hudBody {
+      margin-top: 8px;
+    }
+
+    #hud.minimized {
+      width: auto;
+      padding: 10px 12px;
+    }
+
+    #hud.minimized #hudBody {
+      display: none;
+    }
+
+    #hud.minimized #hudToggle {
+      width: 30px;
+      min-width: 30px;
     }
 
     #hud p {
@@ -113,12 +147,13 @@
 
     #actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 8px;
       margin-top: 12px;
     }
 
     button {
+      min-width: 0;
       min-height: 36px;
       padding: 8px 10px;
       color: #f9fbff;
@@ -135,11 +170,68 @@
       border-color: rgba(163, 222, 255, 0.55);
     }
 
+    #touchPad {
+      position: fixed;
+      z-index: 11;
+      right: 16px;
+      bottom: calc(16px + env(safe-area-inset-bottom));
+      display: none;
+      grid-template-columns: repeat(3, 56px);
+      grid-template-rows: repeat(3, 56px);
+      gap: 8px;
+      padding: 10px;
+      background: rgba(10, 16, 24, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      touch-action: none;
+      user-select: none;
+    }
+
+    .touch-button {
+      width: 56px;
+      height: 56px;
+      min-height: 56px;
+      padding: 0;
+      border-radius: 8px;
+      font-size: 24px;
+      line-height: 1;
+      touch-action: none;
+    }
+
+    .touch-button[data-control="arrowup"] {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .touch-button[data-control="arrowleft"] {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .touch-button[data-control="arrowright"] {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    .touch-button[data-control="arrowdown"] {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    @media (pointer: coarse), (max-width: 760px) {
+      #touchPad {
+        display: grid;
+      }
+    }
+
     @media (max-width: 640px) {
       #hud {
         top: 10px;
         left: 10px;
-        width: calc(100vw - 20px);
+        right: 10px;
+        width: auto;
         padding: 12px;
       }
 
@@ -149,6 +241,22 @@
 
       #hud p {
         font-size: 12px;
+      }
+
+      #touchPad {
+        right: 10px;
+        bottom: calc(10px + env(safe-area-inset-bottom));
+        grid-template-columns: repeat(3, 48px);
+        grid-template-rows: repeat(3, 48px);
+        gap: 7px;
+        padding: 9px;
+      }
+
+      .touch-button {
+        width: 48px;
+        height: 48px;
+        min-height: 48px;
+        font-size: 22px;
       }
     }
   </style>
@@ -165,29 +273,53 @@
 </head>
 <body>
   <div id="hud">
-    <h1>Marble Slide Roller</h1>
-    <p><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> roll relative to camera. <kbd>Mouse</kbd> orbit. <kbd>R</kbd> reset.</p>
-    <p>Stay in the generated slide and cross the finish ring.</p>
-    <div id="meters">
-      <div class="meter"><strong id="progress">0%</strong><span>progress</span></div>
-      <div class="meter"><strong id="timer">0.0</strong><span>seconds</span></div>
+    <div id="hudHeader">
+      <h1>Marble Slide Roller</h1>
+      <button id="hudToggle" type="button" aria-label="Minimize panel" aria-expanded="true">-</button>
     </div>
-    <div id="speed"><div></div></div>
-    <div id="actions">
-      <button id="resetBall" type="button">Reset Ball</button>
-      <button id="newRun" type="button">New Slide</button>
+    <div id="hudBody">
+      <p><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> roll relative to camera. <kbd>Mouse</kbd> orbit. <kbd>R</kbd> reset.</p>
+      <p>Stay in the generated slide and cross the finish ring.</p>
+      <div id="meters">
+        <div class="meter"><strong id="progress">0%</strong><span>progress</span></div>
+        <div class="meter"><strong id="fps">0</strong><span>fps</span></div>
+      </div>
+      <div id="speed"><div></div></div>
+      <div id="actions">
+        <button id="resetBall" type="button">Reset Ball</button>
+        <button id="newRun" type="button">New Slide</button>
+      </div>
     </div>
+  </div>
+  <div id="touchPad" aria-label="Touch roll controls">
+    <button class="touch-button" type="button" data-control="arrowup" aria-label="Roll forward">↑</button>
+    <button class="touch-button" type="button" data-control="arrowleft" aria-label="Roll left">←</button>
+    <button class="touch-button" type="button" data-control="arrowright" aria-label="Roll right">→</button>
+    <button class="touch-button" type="button" data-control="arrowdown" aria-label="Roll backward">↓</button>
   </div>
 
   <script type="module">
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { EXRLoader } from "./vendor/loaders/EXRLoader.js";
     import RAPIER from "@dimforge/rapier3d-compat";
 
     await RAPIER.init();
 
     const WORLD_UP = new THREE.Vector3(0, 1, 0);
     const FALLBACK_UP = new THREE.Vector3(1, 0, 0);
+    const SLIDE_HORIZONTAL_SCALE = 2.08;
+    const SLIDE_BLOCK_THICKNESS = 0.58;
+    const SLIDE_SIDE_SKIRT_DEPTH = 1.52;
+    const SLIDE_SIDE_SKIRT_FLARE = 0.2;
+    const CONTACT_SHADOW_SURFACE_BIAS = 0.028;
+    const GUARDRAIL_HEIGHT = 0.62;
+    const GUARDRAIL_OUTSET = 0.24;
+    const GUARDRAIL_RADIUS = 0.13;
+    const GUARDRAIL_POST_RADIUS = 0.045;
+    const SLIDE_REFLECTION_RESOLUTION = 256;
+    const SLIDE_REFLECTION_INTERVAL = 2;
+    let skyReflectionBackground = null;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xb9d8ee);
@@ -200,7 +332,7 @@
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     document.body.appendChild(renderer.domElement);
@@ -214,31 +346,50 @@
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x516272, 2.15));
 
+    const sunOffset = new THREE.Vector3(-22, 34, 14);
+    const sunTarget = new THREE.Object3D();
+    scene.add(sunTarget);
+
     const sun = new THREE.DirectionalLight(0xffffff, 3.0);
-    sun.position.set(-22, 34, 14);
+    sun.position.copy(sunOffset);
+    sun.target = sunTarget;
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 180;
-    sun.shadow.camera.left = -85;
-    sun.shadow.camera.right = 85;
-    sun.shadow.camera.top = 85;
-    sun.shadow.camera.bottom = -85;
+    sun.shadow.bias = -0.00012;
+    sun.shadow.normalBias = 0.035;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 105;
+    sun.shadow.camera.left = -32;
+    sun.shadow.camera.right = 32;
+    sun.shadow.camera.top = 32;
+    sun.shadow.camera.bottom = -32;
     scene.add(sun);
 
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     world.timestep = 1 / 60;
 
+    await addSkySphere();
+
     const slideProfile = [
-      [-2.55, 1.16],
-      [-2.18, 0.62],
-      [-1.52, 0.13],
-      [-0.78, -0.18],
-      [0.00, -0.31],
-      [0.78, -0.18],
-      [1.52, 0.13],
-      [2.18, 0.62],
-      [2.55, 1.16]
+      [-2.88, 1.68],
+      [-2.80, 1.42],
+      [-2.64, 1.12],
+      [-2.40, 0.80],
+      [-2.08, 0.50],
+      [-1.70, 0.24],
+      [-1.28, 0.04],
+      [-0.86, -0.10],
+      [-0.43, -0.19],
+      [0.00, -0.22],
+      [0.43, -0.19],
+      [0.86, -0.10],
+      [1.28, 0.04],
+      [1.70, 0.24],
+      [2.08, 0.50],
+      [2.40, 0.80],
+      [2.64, 1.12],
+      [2.80, 1.42],
+      [2.88, 1.68]
     ].map(([x, y]) => new THREE.Vector2(x, y));
 
     const tileDefs = {
@@ -290,10 +441,20 @@
     const physicsObjects = [];
     const trackPieces = [];
     const trackSamples = [];
+    const slideReflectionMeshes = [];
     const tempMatrix = new THREE.Matrix4();
     const tempVec = new THREE.Vector3();
     const tempQuat = new THREE.Quaternion();
     const tempScale = new THREE.Vector3();
+    const slideReflectionTarget = new THREE.WebGLCubeRenderTarget(SLIDE_REFLECTION_RESOLUTION, {
+      type: THREE.HalfFloatType,
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter
+    });
+    const slideReflectionCamera = new THREE.CubeCamera(0.08, 900, slideReflectionTarget);
+    const SLIDE_TEXTURE_ROTATION = Math.PI / 2;
+    const slidePbrMaps = await loadSlidePbrMaps();
+    const ballPbrMaps = await loadBallPbrMaps();
 
     let activeSocket = new THREE.Matrix4().identity();
     let totalTrackLength = 0;
@@ -302,10 +463,14 @@
     let finished = false;
     let finishRing;
     let startInfo;
+    let reflectionFrame = 0;
 
-    const slideTexture = makeSlideTexture();
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x12364a, transparent: true, opacity: 0.28 });
     const supportMaterial = new THREE.MeshStandardMaterial({ color: 0x384e5a, roughness: 0.68, metalness: 0.1 });
+    const guardrailMaterial = new THREE.MeshStandardMaterial({ color: 0x111820, roughness: 0.34, metalness: 0.04 });
+    const guardrailPostMaterial = new THREE.MeshStandardMaterial({ color: 0x8b9aa2, roughness: 0.5, metalness: 0.28 });
+    [supportMaterial, guardrailMaterial, guardrailPostMaterial].forEach((material) => {
+      material.userData.reusable = true;
+    });
 
     const ballRadius = 0.62;
     const ballBody = world.createRigidBody(
@@ -325,28 +490,46 @@
 
     const ballMesh = new THREE.Mesh(
       new THREE.SphereGeometry(ballRadius, 64, 32),
-      new THREE.MeshStandardMaterial({
-        map: makeCheckerTexture(),
-        roughness: 0.42,
-        metalness: 0.02
-      })
+      makeBallMaterial()
     );
     ballMesh.castShadow = true;
     ballMesh.receiveShadow = true;
     scene.add(ballMesh);
     physicsObjects.push({ body: ballBody, mesh: ballMesh });
 
+    const ballContactShadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        map: makeContactShadowTexture(),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+        side: THREE.DoubleSide
+      })
+    );
+    ballContactShadow.renderOrder = 2;
+    scene.add(ballContactShadow);
+
     const keys = new Set();
+    const touchControls = new Set();
     const speedFill = document.querySelector("#speed > div");
     const progressEl = document.getElementById("progress");
-    const timerEl = document.getElementById("timer");
-    const clock = new THREE.Clock();
+    const fpsEl = document.getElementById("fps");
+    const hud = document.getElementById("hud");
+    const hudToggle = document.getElementById("hudToggle");
     const fixedDt = 1 / 60;
     const ballPosition = new THREE.Vector3();
     const desiredCameraPosition = new THREE.Vector3();
     const cameraFollowDelta = new THREE.Vector3();
     const cameraOffset = new THREE.Vector3(8, 5.8, -10);
     let accumulator = 0;
+    let previousFrameTime = performance.now();
+    let fpsAverage = 0;
+    let previousFpsDisplayTime = previousFrameTime;
 
     addEventListener("keydown", (event) => {
       const key = event.key.toLowerCase();
@@ -360,9 +543,33 @@
 
     document.getElementById("resetBall").addEventListener("click", resetBall);
     document.getElementById("newRun").addEventListener("click", generateNewSlide);
+    hudToggle.addEventListener("click", () => {
+      const minimized = hud.classList.toggle("minimized");
+      hudToggle.textContent = minimized ? "+" : "-";
+      hudToggle.setAttribute("aria-expanded", String(!minimized));
+      hudToggle.setAttribute("aria-label", minimized ? "Expand panel" : "Minimize panel");
+    });
 
-    generateNewSlide();
-    animate();
+    document.querySelectorAll(".touch-button").forEach((button) => {
+      const control = button.dataset.control;
+      const press = (event) => {
+        event.preventDefault();
+        touchControls.add(control);
+        button.setPointerCapture?.(event.pointerId);
+      };
+      const release = (event) => {
+        event.preventDefault();
+        touchControls.delete(control);
+        if (button.hasPointerCapture?.(event.pointerId)) {
+          button.releasePointerCapture(event.pointerId);
+        }
+      };
+
+      button.addEventListener("pointerdown", press);
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+      button.addEventListener("lostpointercapture", () => touchControls.delete(control));
+    });
 
     function makeStraight({ length, drop, segments }) {
       const samples = [];
@@ -441,7 +648,8 @@
     }
 
     function createTileFromSamples(samples) {
-      const geometry = buildSweptSlideGeometry(samples, slideProfile);
+      samples = scaleSlideSamples(samples);
+      const geometry = buildSweptSlideGeometry(samples, slideProfile, { capStart: false, capEnd: false });
       return {
         geometry,
         samples,
@@ -451,30 +659,89 @@
       };
     }
 
-    function buildSweptSlideGeometry(samples, profile) {
-      const rows = samples.length;
+    function scaleSlideSamples(samples) {
+      const scaledSamples = samples.map((sample) => ({
+        p: new THREE.Vector3(
+          sample.p.x * SLIDE_HORIZONTAL_SCALE,
+          sample.p.y,
+          sample.p.z * SLIDE_HORIZONTAL_SCALE
+        ),
+        tangent: sample.tangent.clone(),
+        upHint: sample.upHint.clone(),
+        roll: sample.roll
+      }));
+
+      for (let i = 0; i < scaledSamples.length; i++) {
+        const previous = scaledSamples[Math.max(0, i - 1)].p;
+        const next = scaledSamples[Math.min(scaledSamples.length - 1, i + 1)].p;
+        const tangent = next.clone().sub(previous);
+        if (tangent.lengthSq() > 0.000001) {
+          scaledSamples[i].tangent.copy(tangent.normalize());
+        } else {
+          scaledSamples[i].tangent.set(
+            samples[i].tangent.x * SLIDE_HORIZONTAL_SCALE,
+            samples[i].tangent.y,
+            samples[i].tangent.z * SLIDE_HORIZONTAL_SCALE
+          ).normalize();
+        }
+      }
+
+      return scaledSamples;
+    }
+
+    function buildSweptSlideGeometry(samples, profile, options = {}) {
+      const rows = samples.map((sample) => {
+        const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
+        return {
+          point: sample.p,
+          right: frame.right,
+          up: frame.up,
+          forward: frame.forward,
+          distance: 0
+        };
+      });
+
+      for (let i = 1; i < rows.length; i++) {
+        rows[i].distance = rows[i - 1].distance + rows[i].point.distanceTo(rows[i - 1].point);
+      }
+
+      return buildSweptSlideGeometryFromRows(rows, profile, options);
+    }
+
+    function buildSweptSlideGeometryFromRows(trackRows, profile, { capStart = true, capEnd = true } = {}) {
+      const rows = trackRows.length;
       const cols = profile.length;
+      const bottomOffset = rows * cols;
       const positions = [];
       const uvs = [];
       const indices = [];
-      const distances = [0];
-
-      for (let i = 1; i < samples.length; i++) {
-        distances[i] = distances[i - 1] + samples[i].p.distanceTo(samples[i - 1].p);
-      }
-      const totalDistance = Math.max(distances[distances.length - 1], 0.0001);
+      const startDistance = trackRows[0].distance ?? 0;
+      const endDistance = trackRows[rows - 1].distance ?? 0;
+      const totalDistance = Math.max(endDistance - startDistance, 0.0001);
 
       for (let i = 0; i < rows; i++) {
-        const sample = samples[i];
-        const frame = getFrame(sample.tangent, sample.upHint, sample.roll);
-        const u = distances[i] / totalDistance;
+        const row = trackRows[i];
+        const u = ((row.distance ?? startDistance) - startDistance) / totalDistance;
         for (let j = 0; j < cols; j++) {
           const point = profile[j];
-          const vertex = sample.p.clone()
-            .addScaledVector(frame.right, point.x)
-            .addScaledVector(frame.up, point.y);
+          const vertex = row.point.clone()
+            .addScaledVector(row.right, point.x * SLIDE_HORIZONTAL_SCALE)
+            .addScaledVector(row.up, point.y);
           positions.push(vertex.x, vertex.y, vertex.z);
-          uvs.push(u * totalDistance * 0.16, j / (cols - 1));
+          uvs.push(u * totalDistance * 0.16, (j / (cols - 1)) * SLIDE_HORIZONTAL_SCALE);
+        }
+      }
+
+      for (let i = 0; i < rows; i++) {
+        const row = trackRows[i];
+        const u = ((row.distance ?? startDistance) - startDistance) / totalDistance;
+        for (let j = 0; j < cols; j++) {
+          const point = profile[j];
+          const vertex = row.point.clone()
+            .addScaledVector(row.right, point.x * SLIDE_HORIZONTAL_SCALE)
+            .addScaledVector(row.up, point.y - SLIDE_BLOCK_THICKNESS);
+          positions.push(vertex.x, vertex.y, vertex.z);
+          uvs.push(u * totalDistance * 0.16, (j / (cols - 1)) * SLIDE_HORIZONTAL_SCALE);
         }
       }
 
@@ -484,7 +751,46 @@
           const b = (i + 1) * cols + j;
           const c = i * cols + j + 1;
           const d = (i + 1) * cols + j + 1;
+          const ba = bottomOffset + a;
+          const bb = bottomOffset + b;
+          const bc = bottomOffset + c;
+          const bd = bottomOffset + d;
           indices.push(a, b, c, c, b, d);
+          indices.push(ba, bc, bb, bc, bd, bb);
+        }
+      }
+
+      for (let i = 0; i < rows - 1; i++) {
+        const topLeftA = i * cols;
+        const topLeftB = (i + 1) * cols;
+        const bottomLeftA = bottomOffset + topLeftA;
+        const bottomLeftB = bottomOffset + topLeftB;
+        indices.push(topLeftA, bottomLeftA, topLeftB, topLeftB, bottomLeftA, bottomLeftB);
+
+        const topRightA = i * cols + cols - 1;
+        const topRightB = (i + 1) * cols + cols - 1;
+        const bottomRightA = bottomOffset + topRightA;
+        const bottomRightB = bottomOffset + topRightB;
+        indices.push(topRightA, topRightB, bottomRightA, topRightB, bottomRightB, bottomRightA);
+      }
+
+      if (capStart) {
+        for (let j = 0; j < cols - 1; j++) {
+          const startA = j;
+          const startB = j + 1;
+          const startBottomA = bottomOffset + startA;
+          const startBottomB = bottomOffset + startB;
+          indices.push(startA, startB, startBottomA, startB, startBottomB, startBottomA);
+        }
+      }
+
+      if (capEnd) {
+        for (let j = 0; j < cols - 1; j++) {
+          const endA = (rows - 1) * cols + j;
+          const endB = endA + 1;
+          const endBottomA = bottomOffset + endA;
+          const endBottomB = bottomOffset + endB;
+          indices.push(endA, endBottomA, endB, endB, endBottomA, endBottomB);
         }
       }
 
@@ -549,6 +855,7 @@
       }
 
       fallResetY = getLowestTrackPointY() - 45;
+      addContinuousSlideSurface();
       addSupports();
       addFinishRing();
       resetBall();
@@ -585,9 +892,11 @@
       for (const piece of trackPieces) {
         if (piece.collider) world.removeCollider(piece.collider, true);
         if (piece.body) world.removeRigidBody(piece.body);
+        piece.geometry?.dispose();
       }
       trackPieces.length = 0;
       trackSamples.length = 0;
+      slideReflectionMeshes.length = 0;
       finishRing = null;
       startInfo = null;
       fallResetY = -60;
@@ -598,23 +907,8 @@
       const tile = def.build();
       const placement = activeSocket.clone().multiply(tile.startSocket.clone().invert());
 
-      const material = new THREE.MeshStandardMaterial({
-        color: def.color,
-        map: slideTexture,
-        roughness: 0.5,
-        metalness: 0.02,
-        side: THREE.DoubleSide
-      });
-      const mesh = new THREE.Mesh(tile.geometry, material);
-      mesh.matrixAutoUpdate = false;
-      mesh.matrix.copy(placement);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      slideGroup.add(mesh);
-
-      const centerPoints = tile.samples.map((sample) => sample.p.clone().applyMatrix4(placement));
-      const centerLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(centerPoints), lineMaterial);
-      slideGroup.add(centerLine);
+      const trackPlacements = tile.samples.map((sample) => makeTrackPlacementFromMatrix(placement, sample));
+      const centerPoints = trackPlacements.map((trackPlacement) => trackPlacement.center);
 
       const { vertices, indices } = geometryToTrimesh(tile.geometry);
       placement.decompose(tempVec, tempQuat, tempScale);
@@ -631,21 +925,167 @@
       );
 
       let distance = totalTrackLength;
-      for (const point of centerPoints) {
+      for (const trackPlacement of trackPlacements) {
+        const point = trackPlacement.center;
         if (trackSamples.length > 0) {
           distance += point.distanceTo(trackSamples[trackSamples.length - 1].point);
         }
-        trackSamples.push({ point, distance });
+        trackSamples.push({
+          point,
+          distance,
+          right: trackPlacement.right,
+          up: trackPlacement.up,
+          forward: trackPlacement.forward
+        });
       }
 
       const endSocketWorld = placement.clone().multiply(tile.endSocket);
-      trackPieces.push({ id, mesh, centerLine, body, collider, endSocketWorld, placement, length: tile.length });
+      trackPieces.push({ id, geometry: tile.geometry, body, collider, endSocketWorld, placement, length: tile.length });
       activeSocket.copy(endSocketWorld);
       totalTrackLength += tile.length;
 
       if (!startInfo) {
         startInfo = makeTrackPlacementFromMatrix(placement, tile.samples[0]);
       }
+    }
+
+    function addContinuousSlideSurface() {
+      const rows = makeUniqueTrackRows();
+      if (rows.length < 2) return;
+
+      const geometry = buildSweptSlideGeometryFromRows(rows, slideProfile, { capStart: true, capEnd: true });
+      const mesh = new THREE.Mesh(geometry, makeSlideMaterial());
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      slideGroup.add(mesh);
+      slideReflectionMeshes.push(mesh);
+
+      const skirt = new THREE.Mesh(buildSlideSkirtGeometry(rows, slideProfile), makeSlideMaterial());
+      skirt.castShadow = true;
+      skirt.receiveShadow = true;
+      slideGroup.add(skirt);
+      slideReflectionMeshes.push(skirt);
+
+      addSlideGuardrails(rows);
+    }
+
+    function makeUniqueTrackRows() {
+      const rows = [];
+      for (const sample of trackSamples) {
+        if (rows.length > 0 && sample.point.distanceToSquared(rows[rows.length - 1].point) < 0.000001) {
+          rows[rows.length - 1] = sample;
+          continue;
+        }
+        rows.push(sample);
+      }
+      return rows;
+    }
+
+    function buildSlideSkirtGeometry(rows, profile) {
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      const leftProfile = profile[0];
+      const rightProfile = profile[profile.length - 1];
+      const startDistance = rows[0].distance ?? 0;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const u = ((row.distance ?? startDistance) - startDistance) * 0.16;
+        const leftTop = row.point.clone()
+          .addScaledVector(row.right, leftProfile.x * SLIDE_HORIZONTAL_SCALE)
+          .addScaledVector(row.up, leftProfile.y);
+        const rightTop = row.point.clone()
+          .addScaledVector(row.right, rightProfile.x * SLIDE_HORIZONTAL_SCALE)
+          .addScaledVector(row.up, rightProfile.y);
+        const leftBottom = leftTop.clone()
+          .addScaledVector(row.right, -SLIDE_SIDE_SKIRT_FLARE)
+          .addScaledVector(row.up, -SLIDE_SIDE_SKIRT_DEPTH);
+        const rightBottom = rightTop.clone()
+          .addScaledVector(row.right, SLIDE_SIDE_SKIRT_FLARE)
+          .addScaledVector(row.up, -SLIDE_SIDE_SKIRT_DEPTH);
+
+        positions.push(
+          leftTop.x, leftTop.y, leftTop.z,
+          leftBottom.x, leftBottom.y, leftBottom.z,
+          rightTop.x, rightTop.y, rightTop.z,
+          rightBottom.x, rightBottom.y, rightBottom.z
+        );
+        uvs.push(
+          u, 0,
+          u, SLIDE_SIDE_SKIRT_DEPTH,
+          u, 0,
+          u, SLIDE_SIDE_SKIRT_DEPTH
+        );
+      }
+
+      for (let i = 0; i < rows.length - 1; i++) {
+        const a = i * 4;
+        const b = (i + 1) * 4;
+        indices.push(
+          a, a + 1, b,
+          b, a + 1, b + 1,
+          a + 2, b + 2, a + 3,
+          b + 2, b + 3, a + 3
+        );
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    function addSlideGuardrails(rows) {
+      const leftProfile = slideProfile[0];
+      const rightProfile = slideProfile[slideProfile.length - 1];
+      addGuardrailSide(rows, leftProfile, -1);
+      addGuardrailSide(rows, rightProfile, 1);
+    }
+
+    function addGuardrailSide(rows, edgeProfile, sideSign) {
+      const railPoints = rows.map((row) => makeGuardrailPoint(row, edgeProfile, sideSign, GUARDRAIL_HEIGHT, GUARDRAIL_OUTSET));
+      const railCurve = new THREE.CatmullRomCurve3(railPoints, false, "centripetal", 0.2);
+      const rail = new THREE.Mesh(
+        new THREE.TubeGeometry(railCurve, Math.max(96, rows.length), GUARDRAIL_RADIUS, 14, false),
+        guardrailMaterial
+      );
+      rail.castShadow = true;
+      rail.receiveShadow = true;
+      slideGroup.add(rail);
+
+      const postStride = Math.max(14, Math.floor(rows.length / 34));
+      for (let i = 0; i < rows.length; i += postStride) {
+        const row = rows[i];
+        const base = makeGuardrailPoint(row, edgeProfile, sideSign, 0.08, GUARDRAIL_OUTSET * 0.48);
+        const top = makeGuardrailPoint(row, edgeProfile, sideSign, GUARDRAIL_HEIGHT - GUARDRAIL_RADIUS * 0.4, GUARDRAIL_OUTSET);
+        const post = makeCylinderBetween(base, top, GUARDRAIL_POST_RADIUS, guardrailPostMaterial, 8);
+        slideGroup.add(post);
+      }
+    }
+
+    function makeGuardrailPoint(row, edgeProfile, sideSign, lift, outset) {
+      return row.point.clone()
+        .addScaledVector(row.right, edgeProfile.x * SLIDE_HORIZONTAL_SCALE + sideSign * outset)
+        .addScaledVector(row.up, edgeProfile.y + lift);
+    }
+
+    function makeCylinderBetween(start, end, radius, material, radialSegments = 10) {
+      const direction = end.clone().sub(start);
+      const length = direction.length();
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, length, radialSegments),
+        material
+      );
+      mesh.position.copy(start).add(end).multiplyScalar(0.5);
+      mesh.quaternion.setFromUnitVectors(WORLD_UP, direction.normalize());
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
     }
 
     function geometryToTrimesh(geometry) {
@@ -699,7 +1139,7 @@
       const frameInfo = makeTrackPlacementFromMatrix(lastPiece.placement, sample);
 
       finishRing = new THREE.Mesh(
-        new THREE.TorusGeometry(2.9, 0.08, 16, 96),
+        new THREE.TorusGeometry(2.9 * SLIDE_HORIZONTAL_SCALE, 0.08, 16, 96),
         new THREE.MeshStandardMaterial({
           color: 0xf6f08a,
           emissive: 0x302800,
@@ -746,6 +1186,9 @@
     const right = new THREE.Vector3();
     const torqueAxis = new THREE.Vector3();
 
+    generateNewSlide();
+    animate();
+
     function applyBallControls(dt) {
       desiredMove.set(0, 0, 0);
 
@@ -755,10 +1198,10 @@
       forward.normalize();
       right.crossVectors(forward, up).normalize();
 
-      if (keys.has("arrowup")) desiredMove.add(forward);
-      if (keys.has("arrowdown")) desiredMove.sub(forward);
-      if (keys.has("arrowright")) desiredMove.add(right);
-      if (keys.has("arrowleft")) desiredMove.sub(right);
+      if (keys.has("arrowup") || touchControls.has("arrowup")) desiredMove.add(forward);
+      if (keys.has("arrowdown") || touchControls.has("arrowdown")) desiredMove.sub(forward);
+      if (keys.has("arrowright") || touchControls.has("arrowright")) desiredMove.add(right);
+      if (keys.has("arrowleft") || touchControls.has("arrowleft")) desiredMove.sub(right);
 
       if (desiredMove.lengthSq() === 0) return;
       desiredMove.normalize();
@@ -784,7 +1227,17 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      const frameDt = Math.min(clock.getDelta(), 0.05);
+      const now = performance.now();
+      const frameDt = Math.min((now - previousFrameTime) / 1000, 0.05);
+      previousFrameTime = now;
+      if (frameDt > 0) {
+        const instantFps = 1 / frameDt;
+        fpsAverage = fpsAverage === 0 ? instantFps : THREE.MathUtils.lerp(fpsAverage, instantFps, 0.08);
+        if (now - previousFpsDisplayTime > 250) {
+          fpsEl.textContent = `${Math.round(fpsAverage)}`;
+          previousFpsDisplayTime = now;
+        }
+      }
       accumulator += frameDt;
 
       while (accumulator >= fixedDt) {
@@ -803,6 +1256,8 @@
       const t = ballBody.translation();
       ballPosition.set(t.x, t.y, t.z);
       if (t.y < fallResetY) resetBall();
+      updateSunShadowTarget();
+      updateBallContactShadow();
 
       const progress = estimateProgress(ballPosition);
       if (!finished && progress > 0.985) {
@@ -816,10 +1271,147 @@
       const speedPct = Math.min(100, (Math.hypot(v.x, v.z) / 16.5) * 100);
       speedFill.style.width = `${speedPct}%`;
       progressEl.textContent = `${Math.round(progress * 100)}%`;
-      timerEl.textContent = ((performance.now() - runStartedAt) / 1000).toFixed(1);
       if (finished) progressEl.textContent = "Done";
 
+      updateSlideReflection();
       renderer.render(scene, camera);
+    }
+
+    function updateSunShadowTarget() {
+      sun.position.copy(ballPosition).add(sunOffset);
+      sunTarget.position.copy(ballPosition);
+      sunTarget.updateMatrixWorld();
+    }
+
+    function updateSlideReflection() {
+      if (slideReflectionMeshes.length === 0) return;
+      reflectionFrame = (reflectionFrame + 1) % SLIDE_REFLECTION_INTERVAL;
+      if (reflectionFrame !== 0) return;
+
+      slideReflectionCamera.position.copy(camera.position);
+
+      const previousContactShadowVisibility = ballContactShadow.visible;
+      ballContactShadow.visible = false;
+      for (const mesh of slideReflectionMeshes) {
+        mesh.visible = false;
+      }
+
+      const previousFog = scene.fog;
+      const previousBackground = scene.background;
+      if (skyReflectionBackground) scene.background = skyReflectionBackground;
+      scene.fog = null;
+      slideReflectionCamera.update(renderer, scene);
+      scene.background = previousBackground;
+      scene.fog = previousFog;
+
+      for (const mesh of slideReflectionMeshes) {
+        mesh.visible = true;
+      }
+      ballContactShadow.visible = previousContactShadowVisibility;
+    }
+
+    function updateBallContactShadow() {
+      if (trackSamples.length === 0) {
+        ballContactShadow.visible = false;
+        return;
+      }
+
+      const closest = findClosestTrackSample(ballPosition, Math.max(1, Math.floor(trackSamples.length / 260)));
+      if (!closest) {
+        ballContactShadow.visible = false;
+        return;
+      }
+
+      const surface = sampleSlideSurfaceUnderBall(closest, ballPosition);
+      if (surface.lateralOverflow > ballRadius * 0.65) {
+        ballContactShadow.visible = false;
+        return;
+      }
+      const height = Math.abs(ballPosition.clone().sub(surface.point).dot(surface.normal));
+      if (height < ballRadius * 0.68 || height > ballRadius + 1.25) {
+        ballContactShadow.visible = false;
+        return;
+      }
+      const opacity = THREE.MathUtils.clamp(0.42 * (1 - (height - ballRadius) / 1.1), 0, 0.42);
+      ballContactShadow.visible = opacity > 0.015;
+      ballContactShadow.material.opacity = opacity;
+      ballContactShadow.position.copy(surface.point).addScaledVector(surface.normal, CONTACT_SHADOW_SURFACE_BIAS);
+      ballContactShadow.quaternion.setFromRotationMatrix(
+        tempMatrix.makeBasis(surface.widthTangent, closest.forward, surface.normal)
+      );
+      const spread = THREE.MathUtils.clamp(1.15 + (height - ballRadius) * 0.45, 1.15, 1.8);
+      ballContactShadow.scale.set(ballRadius * 2.2 * spread, ballRadius * 1.45 * spread, 1);
+    }
+
+    function findClosestTrackSample(position, step = 1) {
+      let closest = null;
+      let closestDistanceSq = Infinity;
+      for (let i = 0; i < trackSamples.length; i += step) {
+        const sample = trackSamples[i];
+        const d = sample.point.distanceToSquared(position);
+        if (d < closestDistanceSq) {
+          closestDistanceSq = d;
+          closest = sample;
+        }
+      }
+      return closest;
+    }
+
+    function sampleSlideSurfaceUnderBall(row, position) {
+      const rawLateral = position.clone().sub(row.point).dot(row.right);
+      const minLateral = slideProfile[0].x * SLIDE_HORIZONTAL_SCALE;
+      const maxLateral = slideProfile[slideProfile.length - 1].x * SLIDE_HORIZONTAL_SCALE;
+      const lateral = THREE.MathUtils.clamp(rawLateral, minLateral, maxLateral);
+      const lateralOverflow = Math.max(minLateral - rawLateral, rawLateral - maxLateral, 0);
+      const profileX = lateral / SLIDE_HORIZONTAL_SCALE;
+      let left = slideProfile[0];
+      let right = slideProfile[slideProfile.length - 1];
+
+      for (let i = 0; i < slideProfile.length - 1; i++) {
+        if (profileX >= slideProfile[i].x && profileX <= slideProfile[i + 1].x) {
+          left = slideProfile[i];
+          right = slideProfile[i + 1];
+          break;
+        }
+      }
+
+      const span = Math.max(right.x - left.x, 0.0001);
+      const t = THREE.MathUtils.clamp((profileX - left.x) / span, 0, 1);
+      const profileY = THREE.MathUtils.lerp(left.y, right.y, t);
+      const slope = (right.y - left.y) / span;
+      const widthTangent = row.right.clone()
+        .multiplyScalar(SLIDE_HORIZONTAL_SCALE)
+        .addScaledVector(row.up, slope)
+        .normalize();
+      const normal = new THREE.Vector3().crossVectors(row.forward, widthTangent).normalize();
+      if (normal.dot(row.up) < 0) normal.negate();
+
+      const point = row.point.clone()
+        .addScaledVector(row.right, lateral)
+        .addScaledVector(row.up, profileY);
+
+      return { point, normal, widthTangent, lateralOverflow };
+    }
+
+    function makeContactShadowTexture(size = 256) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const gradient = ctx.createRadialGradient(
+        size * 0.5, size * 0.5, size * 0.05,
+        size * 0.5, size * 0.5, size * 0.5
+      );
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.85)");
+      gradient.addColorStop(0.48, "rgba(0, 0, 0, 0.35)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      return texture;
     }
 
     function frameCameraToBall(immediate) {
@@ -888,6 +1480,236 @@
       return texture;
     }
 
+    function loadTexture(loader, url) {
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+    }
+
+    async function addSkySphere() {
+      const exrLoader = new EXRLoader();
+      try {
+        const skyTexture = await loadTexture(exrLoader, "./assets/sky/kloofendal_48d_partly_cloudy_puresky_1k.exr");
+        skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+        skyTexture.colorSpace = THREE.LinearSRGBColorSpace;
+        skyTexture.wrapS = THREE.RepeatWrapping;
+        skyTexture.repeat.x = -1;
+        skyTexture.offset.x = 1;
+        skyTexture.needsUpdate = true;
+
+        scene.environment = skyTexture;
+        skyReflectionBackground = skyTexture;
+
+        const skySphere = new THREE.Mesh(
+          new THREE.SphereGeometry(420, 64, 32),
+          new THREE.MeshBasicMaterial({
+            map: skyTexture,
+            side: THREE.BackSide,
+            fog: false,
+            depthWrite: false
+          })
+        );
+        skySphere.renderOrder = -100;
+        scene.add(skySphere);
+      } catch (error) {
+        console.warn("Could not load sky sphere texture.", error);
+      }
+    }
+
+    async function loadSlidePbrMaps() {
+      const textureLoader = new THREE.TextureLoader();
+      const exrLoader = new EXRLoader();
+      const basePath = "./assets/wood_slide.blend/textures/";
+
+      try {
+        const [map, roughnessMap, displacementMap, normalMap] = await Promise.all([
+          loadTexture(textureLoader, `${basePath}wood_table_001_diff_1k.jpg`),
+          loadTexture(textureLoader, `${basePath}wood_table_001_rough_1k.jpg`),
+          loadTexture(textureLoader, `${basePath}wood_table_001_disp_1k.png`),
+          loadTexture(exrLoader, `${basePath}wood_table_001_nor_gl_1k.exr`)
+        ]);
+
+        configurePbrTexture(map, { colorSpace: THREE.SRGBColorSpace, rotation: SLIDE_TEXTURE_ROTATION });
+        configurePbrTexture(roughnessMap, { rotation: SLIDE_TEXTURE_ROTATION });
+        configurePbrTexture(displacementMap, { rotation: SLIDE_TEXTURE_ROTATION });
+        configurePbrTexture(normalMap, { rotation: SLIDE_TEXTURE_ROTATION });
+
+        return { map, roughnessMap, displacementMap, normalMap };
+      } catch (error) {
+        console.warn("Could not load slide PBR maps; using procedural fallback.", error);
+        return { map: makeSlideTexture() };
+      }
+    }
+
+    async function loadBallPbrMaps() {
+      const textureLoader = new THREE.TextureLoader();
+      const exrLoader = new EXRLoader();
+      const basePath = "./assets/marble_ball.blend/textures/";
+
+      try {
+        const [map, roughnessMap, displacementMap, normalMap] = await Promise.all([
+          loadTexture(textureLoader, `${basePath}marble_mosaic_tiles_diff_1k.jpg`),
+          loadTexture(exrLoader, `${basePath}marble_mosaic_tiles_rough_1k.exr`),
+          loadTexture(textureLoader, `${basePath}marble_mosaic_tiles_disp_1k.png`),
+          loadTexture(exrLoader, `${basePath}marble_mosaic_tiles_nor_gl_1k.exr`)
+        ]);
+
+        configurePbrTexture(map, { colorSpace: THREE.SRGBColorSpace });
+        configurePbrTexture(roughnessMap);
+        configurePbrTexture(displacementMap);
+        configurePbrTexture(normalMap);
+
+        return { map, roughnessMap, displacementMap, normalMap };
+      } catch (error) {
+        console.warn("Could not load ball PBR maps; using checker fallback.", error);
+        return { map: makeCheckerTexture() };
+      }
+    }
+
+    function configurePbrTexture(texture, { colorSpace = THREE.NoColorSpace, rotation = 0 } = {}) {
+      texture.colorSpace = colorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1, 1);
+      texture.center.set(0.5, 0.5);
+      texture.rotation = rotation;
+      texture.flipY = false;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.needsUpdate = true;
+    }
+
+    function addBallReflectionShader(material) {
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.reflectedBallPosition = { value: ballPosition };
+        shader.uniforms.reflectedBallRadius = { value: ballRadius };
+        shader.uniforms.reflectedBallStrength = { value: 0.22 };
+        shader.uniforms.reflectedBallMap = { value: ballPbrMaps.map };
+        shader.uniforms.reflectedBallQuaternion = { value: ballMesh.quaternion };
+
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            "#include <common>",
+            "#include <common>\nvarying vec3 vSlideWorldPosition;"
+          )
+          .replace(
+            "#include <project_vertex>",
+            "vSlideWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#include <project_vertex>"
+          );
+
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            "#include <common>",
+            `#include <common>
+varying vec3 vSlideWorldPosition;
+uniform vec3 reflectedBallPosition;
+uniform float reflectedBallRadius;
+uniform float reflectedBallStrength;
+uniform sampler2D reflectedBallMap;
+uniform vec4 reflectedBallQuaternion;
+
+float reflectedSphereHit(vec3 origin, vec3 rayDirection, vec3 sphereCenter, float sphereRadius, out vec3 hitNormal) {
+  vec3 offset = origin - sphereCenter;
+  float b = dot(offset, rayDirection);
+  float c = dot(offset, offset) - sphereRadius * sphereRadius;
+  float h = b * b - c;
+  if (h <= 0.0) {
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    return 0.0;
+  }
+  float t = -b - sqrt(h);
+  if (t <= 0.0) {
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    return 0.0;
+  }
+  vec3 hitPoint = origin + rayDirection * t;
+  hitNormal = normalize(hitPoint - sphereCenter);
+  float edge = smoothstep(0.0, 0.32, h / (sphereRadius * sphereRadius));
+  float distanceFade = 1.0 / (1.0 + t * 0.18);
+  return edge * distanceFade;
+}
+
+vec3 inverseQuaternionRotate(vec3 value, vec4 q) {
+  vec3 invQ = -q.xyz;
+  return value + 2.0 * cross(invQ, cross(invQ, value) + q.w * value);
+}
+
+vec2 sphereUvFromNormal(vec3 normalDirection) {
+  float u = atan(normalDirection.z, -normalDirection.x) / 6.28318530718;
+  float v = 1.0 - acos(clamp(normalDirection.y, -1.0, 1.0)) / 3.14159265359;
+  return vec2(fract(u), clamp(v, 0.0, 1.0));
+}
+
+vec3 reflectedSrgbToLinear(vec3 color) {
+  return mix(
+    pow(color * 0.9478672986 + vec3(0.0521327014), vec3(2.4)),
+    color * 0.0773993808,
+    vec3(lessThanEqual(color, vec3(0.04045)))
+  );
+}
+
+vec3 reflectedBallColor(vec3 sphereNormal) {
+  vec3 localNormal = normalize(inverseQuaternionRotate(sphereNormal, reflectedBallQuaternion));
+  vec3 ballTexel = texture2D(reflectedBallMap, sphereUvFromNormal(localNormal)).rgb;
+  return reflectedSrgbToLinear(ballTexel);
+}`
+          )
+          .replace(
+            "#include <opaque_fragment>",
+            `vec3 slideWorldNormal = normalize(inverseTransformDirection(normal, viewMatrix));
+vec3 slideViewRay = normalize(vSlideWorldPosition - cameraPosition);
+vec3 slideReflectionRay = normalize(reflect(slideViewRay, slideWorldNormal));
+vec3 reflectedBallNormal;
+float reflectedBallHit = reflectedSphereHit(
+  vSlideWorldPosition + slideWorldNormal * 0.04,
+  slideReflectionRay,
+  reflectedBallPosition,
+  reflectedBallRadius * 1.08,
+  reflectedBallNormal
+);
+outgoingLight += reflectedBallColor(reflectedBallNormal) * reflectedBallHit * reflectedBallStrength;
+#include <opaque_fragment>`
+          );
+      };
+      material.customProgramCacheKey = () => "slide-ball-ray-reflection-v2";
+      return material;
+    }
+
+    function makeSlideMaterial() {
+      return addBallReflectionShader(new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        map: slidePbrMaps.map,
+        roughnessMap: slidePbrMaps.roughnessMap,
+        normalMap: slidePbrMaps.normalMap,
+        displacementMap: slidePbrMaps.displacementMap,
+        displacementScale: slidePbrMaps.displacementMap ? 0.045 : 0,
+        displacementBias: slidePbrMaps.displacementMap ? -0.015 : 0,
+        normalScale: new THREE.Vector2(0.8, 0.8),
+        envMap: slideReflectionTarget.texture,
+        envMapIntensity: 0.28,
+        roughness: 0.88,
+        metalness: 0,
+        clearcoat: 0.14,
+        clearcoatRoughness: 0.48,
+        reflectivity: 0.28,
+        side: THREE.DoubleSide
+      }));
+    }
+
+    function makeBallMaterial() {
+      return new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: ballPbrMaps.map,
+        roughnessMap: ballPbrMaps.roughnessMap,
+        normalMap: ballPbrMaps.normalMap,
+        displacementMap: ballPbrMaps.displacementMap,
+        displacementScale: ballPbrMaps.displacementMap ? 0.018 : 0,
+        displacementBias: ballPbrMaps.displacementMap ? -0.006 : 0,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughness: 0.36,
+        metalness: 0.01
+      });
+    }
+
     function makeSlideTexture() {
       const canvas = document.createElement("canvas");
       canvas.width = 512;
@@ -920,8 +1742,10 @@
       object.traverse?.((child) => {
         child.geometry?.dispose();
         if (Array.isArray(child.material)) {
-          child.material.forEach((material) => material.dispose());
-        } else {
+          child.material.forEach((material) => {
+            if (!material.userData.reusable) material.dispose();
+          });
+        } else if (!child.material?.userData.reusable) {
           child.material?.dispose();
         }
       });
